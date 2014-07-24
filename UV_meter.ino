@@ -15,6 +15,7 @@
   - 10K resistor:
       - ends to +5V and ground
       - wiper to LCD VO pin (pin 3)
+  - GUVA-S12SD out to Analog pin 0
   - Si1145 SCL pin to Analog pin 5
   - Si1145 SDA pin to Analog pin 4
 
@@ -30,6 +31,8 @@
 
 Adafruit_SI1145 uv = Adafruit_SI1145();
 float uvIndex;
+
+const int S12SD_PIN = 0;
 
 // RS, E, D4 .. D7
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
@@ -58,6 +61,12 @@ void loop() {
 
   lcd.print("UV: ");
   lcd.print(uvIndex);
+  lcd.print("        ");
+
+  // Analog UV reading
+  lcd.setCursor(12, 0);
+  lcd.print(analogRead(S12SD_PIN));
+  lcd.print("   ");
 
   // Beginning of second line
   lcd.setCursor(0, 1);
