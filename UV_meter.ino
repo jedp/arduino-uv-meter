@@ -20,8 +20,8 @@
   - Si1145 SCL pin to Analog pin 5
   - Si1145 SDA pin to Analog pin 4
 
- Based on tutorial code by David A. Mellis (2008), Limor Fried (2009, 2014),
- and Tom Igoe (2010).
+ Initially derived from tutorial code by David A. Mellis (2008), Limor Fried
+ (2009, 2014), and Tom Igoe (2010).
  */
 
 #include <LiquidCrystal.h>
@@ -33,17 +33,30 @@
 
 Adafruit_SI1145 uv = Adafruit_SI1145();
 
-float uvIndex;
-sensors_event_t event;
+float uvIndex = 0.0;
+int analogUV = 0;
 
 const int S12SD_PIN = 0;    // analog
 
 const int PWM_PIN = 3;      // digital PWM
+
 const long CHIRP_DURATION = 80000;
 const int CHIRP_PITCH = 800;
 
 const float NORMAL_UV = 8.0;
-const float SAMPLE_RATE = 1000;
+const float TOO_DARK = -4.0;
+
+const long SAMPLE_RATE = 1000; // ms
+const long ONE_SECOND_MS = 1000;
+
+long normSecond = 1000;
+long now;
+
+long time = 0;
+long accumTime = 0;
+
+double normTime = 1000.0;
+double accumNormTime = 0;
 
 // RS, E, D4 .. D7
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
@@ -51,6 +64,8 @@ LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 void setup() {
   pinMode(PWM_PIN, OUTPUT);
   chirp();
+
+  // Serial.begin(9600);
 
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
@@ -65,7 +80,15 @@ void setup() {
     while (1);
   }
 
+  uvIndex = uv.readUV() / 100.0;
+  analogUV = analogRead(S12SD_PIN);
+
   delay(2000);
+
+  time = millis();
+  accumTime = time;
+  normTime = time;
+  accumNormTime = time;
 
   lcd.clear();
 }
@@ -82,46 +105,66 @@ void chirp() {
   }
 }
 
-void printUVIndex(float uvIndex) {
+void printStats(float uvIndex, float analogUV) {
+  // Truncate to one decimal place
+  float stops = (int)(uvIndex*10) / 10.0;
+  float delta = stops - NORMAL_UV;
+
+  // Print UV index
   lcd.home();
   lcd.print("UV: ");
   lcd.print(uvIndex);
-  lcd.print("        ");
+  lcd.print("            ");
 
+  // Print straigh analog UV reading
   lcd.setCursor(10, 0);
+  lcd.print(analogUV);
+  lcd.print("       ");
 
-  // The EPA UV Index, http://www2.epa.gov/sunwise/uv-index-scale
-  if (uvIndex <= 2.0) {
-    lcd.print("Low   ");
+  // Print exposure compensation (still theoretical :)
+  lcd.setCursor(0, 1);
+  lcd.print("Exp: ");
+
+  if (delta < TOO_DARK) {
+    lcd.print("Too dark");
+    return;
+  } else if (delta >= 0) {
+    lcd.print("+");
   }
-  else if (uvIndex <= 5.0) {
-    lcd.print("Mod   ");
-  }
-  else if (uvIndex <= 7.0) {
-    lcd.print("High  ");
-  }
-  else if (uvIndex <= 10) {
-    lcd.print("V High");
-  }
-  else {
-    lcd.print("Yikes ");
-  }
+  lcd.print(delta);
+  lcd.print("          ");
 }
 
-void getAndPrintAnalogUV() {
-  lcd.setCursor(0, 1);
-  lcd.print(analogRead(S12SD_PIN));
-  lcd.print("       ");
+long calcNormSecond(float uvIndex) {
+  float scale = pow(2, abs(uvIndex - NORMAL_UV));
+  return (long)((uvIndex >= NORMAL_UV) ?
+                (1000.0 / scale) :
+                (1000.0 * scale));
 }
 
 void loop() {
-  uvIndex = uv.readUV() / 100.0;
+  // Every second, print UV levels
+  if ((accumTime - time) > ONE_SECOND_MS) {
+    uvIndex = uv.readUV() / 100.0;
+    analogUV = analogRead(S12SD_PIN);
+    normSecond = calcNormSecond(uvIndex);
 
-  printUVIndex(uvIndex);
-  getAndPrintAnalogUV();
+    printStats(uvIndex, analogUV);
 
-  //chirp();
+    accumTime = millis();
+    time = accumTime;
+  }
 
-  delay(SAMPLE_RATE);
+  // Every normative-exposure second, chirp
+  if ((accumNormTime - normTime) > normSecond) {
+    chirp();
+
+    accumNormTime = millis();
+    normTime = accumNormTime;
+  }
+
+  now = millis();
+  accumTime += (now - accumTime);
+  accumNormTime += (now - accumNormTime);
 }
 
